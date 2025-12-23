@@ -5,103 +5,81 @@ using System.Windows;
 
 namespace TaskManager
 {
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    public struct TaskDTO
-    {
-        public int Id { get; set; }
-
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 100)]
-        private string _title;
-        public string Title
-        {
-            get => _title;
-            set => _title = value;
-        }
-
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 50)]
-        private string _categoryName;
-        public string CategoryName
-        {
-            get => _categoryName;
-            set => _categoryName = value;
-        }
-
-        public int Priority { get; set; }
-        public int StatusId { get; set; }
-        public long Deadline { get; set; }
-
-        public DateTime DeadlineDate
-        {
-            get
-            {
-                try
-                {
-                    return Deadline > 0
-                        ? DateTimeOffset.FromUnixTimeSeconds(Deadline).DateTime.ToLocalTime()
-                        : DateTime.Now;
-                }
-                catch { return DateTime.Now; }
-            }
-        }
-    }
-
     public partial class MainWindow : Window
     {
         private const string DllPath = "ConsoleApplication17.dll";
 
-        [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
         public static extern void InitManager();
 
-        [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
         public static extern void RefreshTasks();
 
-        [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr GetTasks(out int count);
 
-        [DllImport(DllPath, CallingConvention = CallingConvention.StdCall)]
+        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
         public static extern void DisposeManager();
+
+        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void AddTask(TaskDTO task);
 
         public MainWindow()
         {
             InitializeComponent();
-            try { InitManager(); }
-            catch (Exception ex) { MessageBox.Show("DLL Error: " + ex.Message); }
+            InitManager();
+            LoadTasks();
         }
 
         private void OnLoadTasksClick(object sender, RoutedEventArgs e)
         {
-            try
+            LoadTasks();
+        }
+
+        private void LoadTasks()
+        {
+            RefreshTasks();
+            IntPtr ptr = GetTasks(out int count);
+
+            var list = new List<TaskDTO>();
+            if (ptr != IntPtr.Zero && count > 0)
             {
-                RefreshTasks();
-                IntPtr ptr = GetTasks(out int count);
-
-                if (ptr == IntPtr.Zero || count <= 0)
-                {
-                    MessageBox.Show("Список пуст (база данных не вернула строк).");
-                    return;
-                }
-
-                var tasks = new List<TaskDTO>();
-                int structSize = Marshal.SizeOf(typeof(TaskDTO));
-
+                int size = Marshal.SizeOf<TaskDTO>();
                 for (int i = 0; i < count; i++)
                 {
-                    IntPtr currentPtr = new IntPtr(ptr.ToInt64() + (i * structSize));
-                    TaskDTO task = Marshal.PtrToStructure<TaskDTO>(currentPtr);
-                    tasks.Add(task);
+                    IntPtr itemPtr = IntPtr.Add(ptr, i * size);
+                    list.Add(Marshal.PtrToStructure<TaskDTO>(itemPtr));
                 }
+            }
+            TasksGrid.ItemsSource = list;
+        }
 
-                TasksGrid.ItemsSource = tasks;
-            }
-            catch (Exception ex)
+        private void OnAddTaskClick(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(NewTaskTitle.Text))
             {
-                MessageBox.Show("Ошибка: " + ex.Message);
+                MessageBox.Show("Введите название задачи");
+                return;
             }
+
+            TaskDTO newTask = new TaskDTO
+            {
+                Title = NewTaskTitle.Text,
+                CategoryId = 1,
+                CategoryName = "General",
+                Priority = 2,
+                StatusId = 1,
+                Deadline = DateTimeOffset.Now.AddDays(1).ToUnixTimeSeconds()
+            };
+
+            AddTask(newTask);
+            NewTaskTitle.Text = "";
+            LoadTasks();
         }
 
         protected override void OnClosed(EventArgs e)
         {
-            try { DisposeManager(); } catch { }
+            DisposeManager();
             base.OnClosed(e);
         }
     }
