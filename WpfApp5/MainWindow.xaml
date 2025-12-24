@@ -2,104 +2,156 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:TaskManager"
-        Title="TaskManager" Height="600" Width="1000"
-        WindowStartupLocation="CenterScreen" Background="#F0F2F5">
+        Title="Task Manager"
+        Height="600"
+        Width="1000"
+        WindowStartupLocation="CenterScreen"
+        Background="#F0F2F5">
 
     <Window.Resources>
         <local:PriorityToColorConverter x:Key="PriorityColor"/>
         <local:UnixToDateConverter x:Key="UnixToDate"/>
+        <local:DeadlineToColorConverter x:Key="DeadlineColor"/>
     </Window.Resources>
 
     <Grid Margin="15">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="2*"/>
-            <ColumnDefinition Width="1.2*"/>
+            <ColumnDefinition Width="1.3*"/>
         </Grid.ColumnDefinitions>
 
         <TabControl Grid.Column="0" Margin="0,0,10,0">
 
             <TabItem Header="Текущие задачи">
-                <DataGrid x:Name="TasksGrid" 
-                          AutoGenerateColumns="False" 
-                          CanUserAddRows="False" 
-                          IsReadOnly="True" 
-                          SelectionChanged="OnTaskSelected"
-                          GridLinesVisibility="Horizontal">
+                <DataGrid x:Name="TasksGrid"
+                          AutoGenerateColumns="False"
+                          CanUserAddRows="False"
+                          IsReadOnly="True"
+                          SelectionMode="Single"
+                          MouseDoubleClick="OnTaskDoubleClick">
 
                     <DataGrid.RowStyle>
                         <Style TargetType="DataGridRow">
-                            <Setter Property="Background" Value="{Binding Priority, Converter={StaticResource PriorityColor}}"/>
+                            <Setter Property="Background"
+                                    Value="{Binding Deadline, Converter={StaticResource DeadlineColor}}"/>
                         </Style>
                     </DataGrid.RowStyle>
 
                     <DataGrid.Columns>
-                        <DataGridTemplateColumn Header="Готово" Width="60">
+                        <DataGridTemplateColumn Header="✔" Width="40">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <CheckBox HorizontalAlignment="Center" 
-                                              VerticalAlignment="Center"
-                                              Checked="OnTaskChecked" 
-                                              Tag="{Binding Id}"/>
+                                    <CheckBox Checked="OnTaskChecked"
+                                              Tag="{Binding Id}"
+                                              HorizontalAlignment="Center"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
                         <DataGridTextColumn Header="Название" Binding="{Binding Title}" Width="*"/>
-                        <DataGridTextColumn Header="Категория" Binding="{Binding CategoryName}" Width="100"/>
-                        <DataGridTextColumn Header="Приоритет" Binding="{Binding Priority}" Width="80"/>
-                        <DataGridTextColumn Header="Дедлайн" Binding="{Binding Deadline, Converter={StaticResource UnixToDate}}" Width="100"/>
+                        <DataGridTextColumn Header="Категория" Binding="{Binding CategoryName}" Width="120"/>
+                        <DataGridTextColumn Header="Приоритет" Binding="{Binding Priority}" Width="90"/>
+                        <DataGridTextColumn Header="Статус" Binding="{Binding StatusId}" Width="90"/>
+                        <DataGridTextColumn Header="Дедлайн"
+                                            Binding="{Binding Deadline, Converter={StaticResource UnixToDate}}"
+                                            Width="120"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </TabItem>
 
             <TabItem Header="Выполненные">
-                <DataGrid x:Name="DoneGrid" 
-                          AutoGenerateColumns="False" 
-                          CanUserAddRows="False" 
+                <DataGrid x:Name="DoneGrid"
+                          AutoGenerateColumns="False"
                           IsReadOnly="True">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Название" Binding="{Binding Title}" Width="*"/>
-                        <DataGridTextColumn Header="Категория" Binding="{Binding CategoryName}" Width="100"/>
-                        <DataGridTextColumn Header="Дата завершения" Binding="{Binding Deadline, Converter={StaticResource UnixToDate}}" Width="120"/>
+                        <DataGridTextColumn Header="Категория" Binding="{Binding CategoryName}" Width="120"/>
+                        <DataGridTextColumn Header="Дата"
+                                            Binding="{Binding Deadline, Converter={StaticResource UnixToDate}}"
+                                            Width="120"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </TabItem>
+
+            
+            <TabItem Header="Отложенные">
+                <DataGrid x:Name="DeferredGrid"
+              AutoGenerateColumns="False"
+              IsReadOnly="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Название" Binding="{Binding Title}" Width="*"/>
+                        <DataGridTextColumn Header="Категория" Binding="{Binding CategoryName}" Width="120"/>
+                        <DataGridTextColumn Header="Дедлайн"
+                                Binding="{Binding Deadline, Converter={StaticResource UnixToDate}}"
+                                Width="120"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </TabItem>
+
+
         </TabControl>
 
-        <Border Grid.Column="1" Background="White" CornerRadius="8" Padding="15" VerticalAlignment="Top">
-            <Border.Effect>
-                <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.1"/>
-            </Border.Effect>
+        <Border Grid.Column="1"
+                Background="White"
+                CornerRadius="8"
+                Padding="15">
 
             <StackPanel>
-                <TextBlock Text="Редактор задачи" FontSize="18" FontWeight="Bold" Margin="0,0,0,15"/>
 
-                <TextBlock Text="Название задачи:"/>
-                <TextBox x:Name="TitleBox" Padding="5" Margin="0,5,0,10"/>
-                <TextBlock Text="Категория:"/>
-                <ComboBox x:Name="CategoryBox" Margin="0,5,0,10" SelectedIndex="0">
+                <TextBlock Text="Редактор задачи"
+                           FontSize="18"
+                           FontWeight="Bold"
+                           Margin="0,0,0,15"/>
+
+                <TextBlock Text="Название"/>
+                <TextBox x:Name="TitleBox" Margin="0,5,0,10"/>
+
+                <TextBlock Text="Категория"/>
+                <ComboBox x:Name="CategoryBox" Margin="0,5,0,10">
                     <ComboBoxItem Content="Работа" Tag="1"/>
                     <ComboBoxItem Content="Дом" Tag="2"/>
-                    <ComboBoxItem Content="Учеба" Tag="3"/>
+                    <ComboBoxItem Content="Учёба" Tag="3"/>
+                    <ComboBoxItem Content="Прочее" Tag="4"/>
+                </ComboBox>
+                    
+                
+                
+                <TextBlock Text="Приоритет"/>
+                <ComboBox x:Name="PriorityBox" Margin="0,5,0,10">
+                    <ComboBoxItem Content="Высокий" Tag="1"/>
+                    <ComboBoxItem Content="Средний" Tag="2"/>
+                    <ComboBoxItem Content="Низкий" Tag="3"/>
                 </ComboBox>
 
-                <TextBlock Text="Приоритет:"/>
-                <ComboBox x:Name="PriorityBox" Margin="0,5,0,10" SelectedIndex="1">
-                    <ComboBoxItem Content="1 - Высокий (Красный)" Tag="1"/>
-                    <ComboBoxItem Content="2 - Средний (Желтый)" Tag="2"/>
-                    <ComboBoxItem Content="3 - Низкий (Белый)" Tag="3"/>
+                <TextBlock Text="Статус задачи:"/>
+
+                <ComboBox x:Name="StatusBox"
+          Margin="0,5,0,10"
+          SelectedIndex="0">
+                    <ComboBoxItem Content="Новая" Tag="1"/>
+                    <ComboBoxItem Content="В процессе" Tag="2"/>
+                    <ComboBoxItem Content="Выполнено" Tag="3"/>
+                    <ComboBoxItem Content="Отложено" Tag="4"/>
                 </ComboBox>
 
-                <TextBlock Text="Крайний срок:"/>
-                <DatePicker x:Name="DeadlinePicker" Margin="0,5,0,20"/>
+
+                <TextBlock Text="Дедлайн"/>
+                <DatePicker x:Name="DeadlinePicker" Margin="0,5,0,15"/>
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                    <Button Content="Сохранить" Width="100" Height="30" Click="OnSave" Background="#E0F7FA"/>
-                    <Button Content="Очистить" Width="100" Height="30" Margin="10,0,0,0" Click="OnClear"/>
+                    <Button Content="Сохранить" Width="100" Click="OnSave"/>
+                    <Button Content="Очистить" Width="100" Margin="10,0,0,0" Click="OnClear"/>
                 </StackPanel>
 
-                <Button Content="Удалить задачу" Margin="0,20,0,0" Click="OnDelete" Foreground="Red" Background="Transparent" BorderThickness="0"/>
+                <Button Content="Удалить задачу"
+                        Margin="0,20,0,0"
+                        Foreground="Red"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Click="OnDelete"/>
+
             </StackPanel>
         </Border>
+
     </Grid>
 </Window>

@@ -1,148 +1,171 @@
 ﻿using System;
-using System.Collections.ObjectModel;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 
 namespace TaskManager
 {
     public partial class MainWindow : Window
     {
-        private const string DllPath = "ConsoleApplication17.dll";
-        private int editingId = 0;
+        const string DLL = "ConsoleApplication17.dll";
 
-        private ObservableCollection<TaskDTO> activeTasks = new ObservableCollection<TaskDTO>();
-        private ObservableCollection<TaskDTO> doneTasks = new ObservableCollection<TaskDTO>();
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        static extern void InitManager();
 
-        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)] static extern void InitManager();
-        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)] static extern void RefreshTasks();
-        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)] static extern IntPtr GetTasks(out int count);
-        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)] static extern void AddTask(TaskDTO task);
-        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)] static extern void UpdateTask(TaskDTO task);
-        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)] static extern void DeleteTask(int id);
-        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)] static extern void ChangeStatus(int id, int status);
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        static extern void RefreshTasks();
+
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        static extern IntPtr GetTasks(out int count);
+
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        static extern void AddTask(TaskDTO task);
+
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        static extern void UpdateTask(TaskDTO task);
+
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        static extern void DeleteTask(int id);
+
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        static extern void ChangeStatus(int id, int status);
+
+        [DllImport(DLL, CallingConvention = CallingConvention.Cdecl)]
+        static extern IntPtr GetCategories(out int count);
+
+
+        TaskDTO selectedTask;
+        bool editMode = false;
 
         public MainWindow()
         {
             InitializeComponent();
-            try
-            {
-                InitManager();
-                TasksGrid.ItemsSource = activeTasks;
-                DoneGrid.ItemsSource = doneTasks;
-                LoadTasks();
-                ClearForm();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Ошибка: " + ex.Message + "\nПроверьте подключение к БД или путь к DLL.");
-            }
+            InitManager();
+            LoadTasks();
         }
 
         void LoadTasks()
         {
             RefreshTasks();
             IntPtr ptr = GetTasks(out int count);
-            int size = Marshal.SizeOf(typeof(TaskDTO));
 
-            activeTasks.Clear();
-            doneTasks.Clear();
+            var active = new List<TaskDTO>();
+            var done = new List<TaskDTO>();
+            var deferred = new List<TaskDTO>();
+
+            int size = Marshal.SizeOf(typeof(TaskDTO));
 
             for (int i = 0; i < count; i++)
             {
-                TaskDTO t = (TaskDTO)Marshal.PtrToStructure(IntPtr.Add(ptr, i * size), typeof(TaskDTO));
+                IntPtr p = new IntPtr(ptr.ToInt64() + i * size);
+                TaskDTO t = (TaskDTO)Marshal.PtrToStructure(p, typeof(TaskDTO));
+
                 if (t.StatusId == 3)
-                    doneTasks.Add(t);
+                    done.Add(t);
+                else if (t.StatusId == 4)
+                    deferred.Add(t);
                 else
-                    activeTasks.Add(t);
+                    active.Add(t);
             }
+
+            TasksGrid.ItemsSource = active;
+            DoneGrid.ItemsSource = done;
+            DeferredGrid.ItemsSource = deferred;
         }
 
-        private void OnTaskChecked(object sender, RoutedEventArgs e)
+        void OnTaskDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
-            if (sender is CheckBox cb && cb.Tag is int id)
-            {
-                ChangeStatus(id, 3);
-                LoadTasks();
-            }
-        }
+            if (TasksGrid.SelectedItem == null) return;
 
-        void OnTaskSelected(object sender, SelectionChangedEventArgs e)
-        {
-            if (TasksGrid.SelectedItem is TaskDTO t)
-            {
-                editingId = t.Id;
-                TitleBox.Text = t.Title;
-                PriorityBox.SelectedIndex = (t.Priority - 1 >= 0) ? t.Priority - 1 : 2;
-                CategoryBox.SelectedIndex = (t.CategoryId - 1 >= 0) ? t.CategoryId - 1 : 0;
-                DeadlinePicker.SelectedDate = DateTimeOffset.FromUnixTimeSeconds(t.Deadline).Date;
-            }
+            selectedTask = (TaskDTO)TasksGrid.SelectedItem;
+            editMode = true;
+
+            TitleBox.Text = selectedTask.Title;
+            DeadlinePicker.SelectedDate =
+                DateTimeOffset.FromUnixTimeSeconds(selectedTask.Deadline).LocalDateTime.Date;
+
+            SelectCombo(CategoryBox, selectedTask.CategoryId);
+            SelectCombo(PriorityBox, selectedTask.Priority);
+            SelectCombo(StatusBox, selectedTask.StatusId);
+
         }
 
         void OnSave(object sender, RoutedEventArgs e)
         {
             if (string.IsNullOrWhiteSpace(TitleBox.Text))
             {
-                MessageBox.Show("Введите название!");
+                MessageBox.Show("Введите название задачи");
                 return;
             }
 
-            int priority = PriorityBox.SelectedIndex + 1;
-            int categoryId = CategoryBox.SelectedIndex + 1;
-            DateTime date = DeadlinePicker.SelectedDate ?? DateTime.Today;
-            long unix = new DateTimeOffset(date.Year, date.Month, date.Day, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
-
-            TaskDTO t = new TaskDTO
+            if (!DeadlinePicker.SelectedDate.HasValue)
             {
-                Id = editingId,
-                Title = TitleBox.Text.Trim(),
-                CategoryId = categoryId,
-                CategoryName = "",
-                Priority = priority,
-                StatusId = (editingId == 0) ? 1 : ((TaskDTO)TasksGrid.SelectedItem)?.StatusId ?? 1,
-                Deadline = unix
-            };
-
-            if (editingId == 0)
-            {
-                AddTask(t);
-                activeTasks.Add(t);
+                MessageBox.Show("Выберите дату");
+                return;
             }
-            else
-            {
+
+            TaskDTO t = editMode ? selectedTask : new TaskDTO();
+
+            t.Title = TitleBox.Text;
+            t.CategoryId = GetTag(CategoryBox);
+            t.Priority = GetTag(PriorityBox);
+            t.StatusId = editMode ? selectedTask.StatusId : 1;
+            t.Deadline = new DateTimeOffset(DeadlinePicker.SelectedDate.Value).ToUnixTimeSeconds();
+            t.StatusId = GetTag(StatusBox);
+
+
+            if (editMode)
                 UpdateTask(t);
-                var index = activeTasks.IndexOf((TaskDTO)TasksGrid.SelectedItem);
-                if (index >= 0)
-                    activeTasks[index] = t;
-            }
+            else
+                AddTask(t);
 
-            LoadTasks();
             ClearForm();
+            LoadTasks();
         }
 
         void OnDelete(object sender, RoutedEventArgs e)
         {
-            if (editingId != 0)
-            {
-                DeleteTask(editingId);
-                var taskToRemove = TasksGrid.SelectedItem as TaskDTO;
-                if (taskToRemove != null)
-                    activeTasks.Remove(taskToRemove);
-                LoadTasks();
-                ClearForm();
-            }
+            if (!editMode) return;
+            DeleteTask(selectedTask.Id);
+            ClearForm();
+            LoadTasks();
         }
 
-        void OnClear(object sender, RoutedEventArgs e) => ClearForm();
+        void OnTaskChecked(object sender, RoutedEventArgs e)
+        {
+            CheckBox cb = sender as CheckBox;
+            int id = (int)cb.Tag;
+            ChangeStatus(id, 3);
+            LoadTasks();
+        }
+
+        void OnClear(object sender, RoutedEventArgs e)
+        {
+            ClearForm();
+        }
 
         void ClearForm()
         {
-            editingId = 0;
+            editMode = false;
             TitleBox.Text = "";
-            PriorityBox.SelectedIndex = 1;
-            CategoryBox.SelectedIndex = 0;
-            DeadlinePicker.SelectedDate = DateTime.Today.AddDays(1);
-            TasksGrid.SelectedItem = null;
+            DeadlinePicker.SelectedDate = null;
+            CategoryBox.SelectedIndex = -1;
+            PriorityBox.SelectedIndex = -1;
+        }
+
+        int GetTag(ComboBox box)
+        {
+            ComboBoxItem item = box.SelectedItem as ComboBoxItem;
+            return item == null ? 1 : int.Parse(item.Tag.ToString());
+        }
+
+        void SelectCombo(ComboBox box, int tag)
+        {
+            foreach (ComboBoxItem i in box.Items)
+                if (int.Parse(i.Tag.ToString()) == tag)
+                    box.SelectedItem = i;
         }
     }
 }
