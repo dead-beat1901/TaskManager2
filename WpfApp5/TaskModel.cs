@@ -1,28 +1,22 @@
-﻿using System;
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 
-[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-public struct TaskDTO
+namespace TaskManager
 {
-    private int _id;
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
-    private string _title;
-    private int _categoryId;
-    [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
-    private string _categoryName;
-    private int _priority;
-    private int _statusId;
-    private long _deadline;
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public class TaskDTO
+    {
+        public int Id { get; set; }
 
-    public int Id { get => _id; set => _id = value; }
-    public string Title { get => _title; set => _title = value; }
-    public int CategoryId { get => _categoryId; set => _categoryId = value; }
-    public string CategoryName { get => _categoryName; set => _categoryName = value; }
-    public int Priority { get => _priority; set => _priority = value; }
-    public int StatusId { get => _statusId; set => _statusId = value; }
-    public long Deadline { get => _deadline; set => _deadline = value; }
+        [field: MarshalAs(UnmanagedType.ByValTStr, SizeConst = 256)]
+        public string Title { get; set; }
 
-    public DateTime DeadlineDate => Deadline > 0
-        ? DateTimeOffset.FromUnixTimeSeconds(Deadline).LocalDateTime
-        : DateTime.Now;
+        public int CategoryId { get; set; }
+
+        [field: MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string CategoryName { get; set; }
+
+        public int Priority { get; set; }
+        public int StatusId { get; set; }
+        public long Deadline { get; set; }
+    }
 }

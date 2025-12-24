@@ -1,86 +1,148 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
 
 namespace TaskManager
 {
     public partial class MainWindow : Window
     {
         private const string DllPath = "ConsoleApplication17.dll";
+        private int editingId = 0;
 
-        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void InitManager();
+        private ObservableCollection<TaskDTO> activeTasks = new ObservableCollection<TaskDTO>();
+        private ObservableCollection<TaskDTO> doneTasks = new ObservableCollection<TaskDTO>();
 
-        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void RefreshTasks();
-
-        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
-        public static extern IntPtr GetTasks(out int count);
-
-        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void DisposeManager();
-
-        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)]
-        public static extern void AddTask(TaskDTO task);
+        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)] static extern void InitManager();
+        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)] static extern void RefreshTasks();
+        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)] static extern IntPtr GetTasks(out int count);
+        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)] static extern void AddTask(TaskDTO task);
+        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)] static extern void UpdateTask(TaskDTO task);
+        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)] static extern void DeleteTask(int id);
+        [DllImport(DllPath, CallingConvention = CallingConvention.Cdecl)] static extern void ChangeStatus(int id, int status);
 
         public MainWindow()
         {
             InitializeComponent();
-            InitManager();
-            LoadTasks();
+            try
+            {
+                InitManager();
+                TasksGrid.ItemsSource = activeTasks;
+                DoneGrid.ItemsSource = doneTasks;
+                LoadTasks();
+                ClearForm();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Ошибка: " + ex.Message + "\nПроверьте подключение к БД или путь к DLL.");
+            }
         }
 
-        private void OnLoadTasksClick(object sender, RoutedEventArgs e)
-        {
-            LoadTasks();
-        }
-
-        private void LoadTasks()
+        void LoadTasks()
         {
             RefreshTasks();
             IntPtr ptr = GetTasks(out int count);
+            int size = Marshal.SizeOf(typeof(TaskDTO));
 
-            var list = new List<TaskDTO>();
-            if (ptr != IntPtr.Zero && count > 0)
+            activeTasks.Clear();
+            doneTasks.Clear();
+
+            for (int i = 0; i < count; i++)
             {
-                int size = Marshal.SizeOf<TaskDTO>();
-                for (int i = 0; i < count; i++)
-                {
-                    IntPtr itemPtr = IntPtr.Add(ptr, i * size);
-                    list.Add(Marshal.PtrToStructure<TaskDTO>(itemPtr));
-                }
+                TaskDTO t = (TaskDTO)Marshal.PtrToStructure(IntPtr.Add(ptr, i * size), typeof(TaskDTO));
+                if (t.StatusId == 3)
+                    doneTasks.Add(t);
+                else
+                    activeTasks.Add(t);
             }
-            TasksGrid.ItemsSource = list;
         }
 
-        private void OnAddTaskClick(object sender, RoutedEventArgs e)
+        private void OnTaskChecked(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(NewTaskTitle.Text))
+            if (sender is CheckBox cb && cb.Tag is int id)
             {
-                MessageBox.Show("Введите название задачи");
+                ChangeStatus(id, 3);
+                LoadTasks();
+            }
+        }
+
+        void OnTaskSelected(object sender, SelectionChangedEventArgs e)
+        {
+            if (TasksGrid.SelectedItem is TaskDTO t)
+            {
+                editingId = t.Id;
+                TitleBox.Text = t.Title;
+                PriorityBox.SelectedIndex = (t.Priority - 1 >= 0) ? t.Priority - 1 : 2;
+                CategoryBox.SelectedIndex = (t.CategoryId - 1 >= 0) ? t.CategoryId - 1 : 0;
+                DeadlinePicker.SelectedDate = DateTimeOffset.FromUnixTimeSeconds(t.Deadline).Date;
+            }
+        }
+
+        void OnSave(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(TitleBox.Text))
+            {
+                MessageBox.Show("Введите название!");
                 return;
             }
 
-            TaskDTO newTask = new TaskDTO
+            int priority = PriorityBox.SelectedIndex + 1;
+            int categoryId = CategoryBox.SelectedIndex + 1;
+            DateTime date = DeadlinePicker.SelectedDate ?? DateTime.Today;
+            long unix = new DateTimeOffset(date.Year, date.Month, date.Day, 12, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
+
+            TaskDTO t = new TaskDTO
             {
-                Title = NewTaskTitle.Text,
-                CategoryId = 1,
-                CategoryName = "General",
-                Priority = 2,
-                StatusId = 1,
-                Deadline = DateTimeOffset.Now.AddDays(1).ToUnixTimeSeconds()
+                Id = editingId,
+                Title = TitleBox.Text.Trim(),
+                CategoryId = categoryId,
+                CategoryName = "",
+                Priority = priority,
+                StatusId = (editingId == 0) ? 1 : ((TaskDTO)TasksGrid.SelectedItem)?.StatusId ?? 1,
+                Deadline = unix
             };
 
-            AddTask(newTask);
-            NewTaskTitle.Text = "";
+            if (editingId == 0)
+            {
+                AddTask(t);
+                activeTasks.Add(t);
+            }
+            else
+            {
+                UpdateTask(t);
+                var index = activeTasks.IndexOf((TaskDTO)TasksGrid.SelectedItem);
+                if (index >= 0)
+                    activeTasks[index] = t;
+            }
+
             LoadTasks();
+            ClearForm();
         }
 
-        protected override void OnClosed(EventArgs e)
+        void OnDelete(object sender, RoutedEventArgs e)
         {
-            DisposeManager();
-            base.OnClosed(e);
+            if (editingId != 0)
+            {
+                DeleteTask(editingId);
+                var taskToRemove = TasksGrid.SelectedItem as TaskDTO;
+                if (taskToRemove != null)
+                    activeTasks.Remove(taskToRemove);
+                LoadTasks();
+                ClearForm();
+            }
+        }
+
+        void OnClear(object sender, RoutedEventArgs e) => ClearForm();
+
+        void ClearForm()
+        {
+            editingId = 0;
+            TitleBox.Text = "";
+            PriorityBox.SelectedIndex = 1;
+            CategoryBox.SelectedIndex = 0;
+            DeadlinePicker.SelectedDate = DateTime.Today.AddDays(1);
+            TasksGrid.SelectedItem = null;
         }
     }
 }
