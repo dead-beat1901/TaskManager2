@@ -77,19 +77,23 @@ namespace TaskManager
 
         void OnTaskDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
-            if (TasksGrid.SelectedItem == null) return;
+            DataGrid grid = sender as DataGrid;
+            if (grid == null || grid.SelectedItem == null)
+                return;
 
-            selectedTask = (TaskDTO)TasksGrid.SelectedItem;
+            selectedTask = (TaskDTO)grid.SelectedItem;
             editMode = true;
 
             TitleBox.Text = selectedTask.Title;
+
             DeadlinePicker.SelectedDate =
-                DateTimeOffset.FromUnixTimeSeconds(selectedTask.Deadline).LocalDateTime.Date;
+                DateTimeOffset.FromUnixTimeSeconds(selectedTask.Deadline)
+                              .LocalDateTime
+                              .Date;
 
             SelectCombo(CategoryBox, selectedTask.CategoryId);
             SelectCombo(PriorityBox, selectedTask.Priority);
             SelectCombo(StatusBox, selectedTask.StatusId);
-
         }
 
         void OnSave(object sender, RoutedEventArgs e)
